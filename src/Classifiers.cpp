@@ -14,7 +14,16 @@ namespace StackingPlugin {
         if (!player)
             return false;
 
-        return (owner != player && owner != player->GetActorBase());
+        if (owner == player || owner == player->GetActorBase())
+            return false;
+
+        if (owner->GetFormType() == RE::FormType::Faction) {
+            auto* faction = owner->As<RE::TESFaction>();
+            if (faction && player->IsInFaction(faction))
+                return false;
+        }
+
+        return true;
     }
 
     bool IsQuestExtraDataList(RE::ExtraDataList* a_list) {
