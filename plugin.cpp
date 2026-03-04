@@ -1,0 +1,44 @@
+#include <RE/Skyrim.h>
+#include <SKSE/SKSE.h>
+#include <spdlog/sinks/basic_file_sink.h>
+
+#include "Hooks.h"
+
+using namespace std::literals;
+
+SKSEPluginInfo(
+    .Version = { 1, 0, 0, 0 },
+    .Name = "StackingPlugin"sv,
+    .Author = "Author"sv,
+    .SupportEmail = ""sv,
+    .StructCompatibility = SKSE::StructCompatibility::Independent,
+    .RuntimeCompatibility = SKSE::VersionIndependence::AddressLibrary
+)
+
+void SetupLog() {
+    auto logsFolder = SKSE::log::log_directory();
+    if (!logsFolder) SKSE::stl::report_and_fail("SKSE log_directory not provided, logs disabled.");
+    auto pluginName = SKSE::PluginDeclaration::GetSingleton()->GetName();
+    auto logFilePath = *logsFolder / std::format("{}.log", pluginName);
+    auto fileLoggerPtr = std::make_shared<spdlog::sinks::basic_file_sink_mt>(logFilePath.string(), true);
+    auto loggerPtr = std::make_shared<spdlog::logger>("log", std::move(fileLoggerPtr));
+    spdlog::set_default_logger(std::move(loggerPtr));
+    spdlog::set_level(spdlog::level::info);
+    spdlog::flush_on(spdlog::level::info);
+}
+
+SKSEPluginLoad(const SKSE::LoadInterface* skse) {
+    SetupLog();
+
+    auto* plugin = SKSE::PluginDeclaration::GetSingleton();
+    SKSE::log::info("{} v{}", plugin->GetName(), plugin->GetVersion());
+    SKSE::log::info("Game version: {}", skse->RuntimeVersion().string());
+
+    SKSE::Init(skse);
+    SKSE::AllocTrampoline(64);
+
+    StackingPlugin::Hooks::Install();
+
+    SKSE::log::info("{} loaded", plugin->GetName());
+    return true;
+}
