@@ -3,6 +3,7 @@
 #include "Classifiers.h"
 #include <MinHook.h>
 #include <REL/Relocation.h>
+#include <REL/Offset.h>
 
 namespace StackingPlugin {
 
@@ -89,41 +90,39 @@ namespace StackingPlugin {
             return;
         }
 
-        auto hasOnlyIgnorableAddr = REL::RelocationID(11452, 11598).address();
-        auto status = MH_CreateHook(
-            reinterpret_cast<void*>(hasOnlyIgnorableAddr),
-            reinterpret_cast<void*>(&HasOnlyIgnorableExtraData_Hook),
-            reinterpret_cast<void**>(&g_origHasOnlyIgnorable)
-        );
-        if (status != MH_OK) {
-            SKSE::log::error("Failed to hook HasOnlyIgnorableExtraData: {}", MH_StatusToString(status));
-            return;
-        }
-        MH_EnableHook(reinterpret_cast<void*>(hasOnlyIgnorableAddr));
+        auto resolveAddr = [](std::uint64_t a_seID, std::uint64_t a_aeID, std::uint64_t a_vrOffset) -> std::uintptr_t {
+            if (REL::Module::IsVR())
+                return REL::Offset(a_vrOffset).address();
+            return REL::RelocationID(a_seID, a_aeID).address();
+        };
 
-        auto isNotEqualAddr = REL::RelocationID(11448, 11594).address();
-        status = MH_CreateHook(
-            reinterpret_cast<void*>(isNotEqualAddr),
-            reinterpret_cast<void*>(&IsNotEqual_Hook),
-            reinterpret_cast<void**>(&g_origIsNotEqual)
-        );
-        if (status != MH_OK) {
-            SKSE::log::error("Failed to hook IsNotEqual: {}", MH_StatusToString(status));
-            return;
-        }
-        MH_EnableHook(reinterpret_cast<void*>(isNotEqualAddr));
+        auto installHook = [](std::uintptr_t a_target, void* a_detour, void** a_original, const char* a_name) -> bool {
+            auto status = MH_CreateHook(reinterpret_cast<void*>(a_target), a_detour, a_original);
+            if (status != MH_OK) {
+                SKSE::log::error("Failed to hook {}: {}", a_name, MH_StatusToString(status));
+                return false;
+            }
+            MH_EnableHook(reinterpret_cast<void*>(a_target));
+            return true;
+        };
 
-        auto addExtraListAddr = REL::RelocationID(15748, 15986).address();
-        status = MH_CreateHook(
-            reinterpret_cast<void*>(addExtraListAddr),
-            reinterpret_cast<void*>(&AddExtraList_Hook),
-            reinterpret_cast<void**>(&g_origAddExtraList)
-        );
-        if (status != MH_OK) {
-            SKSE::log::error("Failed to hook AddExtraList: {}", MH_StatusToString(status));
+        if (!installHook(resolveAddr(11452, 11598, 0x11D220),
+                reinterpret_cast<void*>(&HasOnlyIgnorableExtraData_Hook),
+                reinterpret_cast<void**>(&g_origHasOnlyIgnorable),
+                "HasOnlyIgnorableExtraData"))
             return;
-        }
-        MH_EnableHook(reinterpret_cast<void*>(addExtraListAddr));
+
+        if (!installHook(resolveAddr(11448, 11594, 0x119B10),
+                reinterpret_cast<void*>(&IsNotEqual_Hook),
+                reinterpret_cast<void**>(&g_origIsNotEqual),
+                "IsNotEqual"))
+            return;
+
+        if (!installHook(resolveAddr(15748, 15986, 0x1E6AB0),
+                reinterpret_cast<void*>(&AddExtraList_Hook),
+                reinterpret_cast<void**>(&g_origAddExtraList),
+                "AddExtraList"))
+            return;
 
         SKSE::log::info("Hooks installed");
     }
