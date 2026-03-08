@@ -2,3 +2,6 @@
 	path = extern/CommonLibVR
 	url = https://github.com/alandtse/CommonLibVR.git
 	branch = ng
+[submodule "extern/minhook"]
+	path = extern/minhook
+	url = https://github.com/TsudaKageyu/minhook.git
