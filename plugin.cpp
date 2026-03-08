@@ -27,6 +27,12 @@ void SetupLog() {
     spdlog::flush_on(spdlog::level::info);
 }
 
+void OnMessage(SKSE::MessagingInterface::Message* a_msg) {
+    if (a_msg->type == SKSE::MessagingInterface::kPostLoadGame) {
+        StackingPlugin::Hooks::MergeInventoryLists();
+    }
+}
+
 SKSEPluginLoad(const SKSE::LoadInterface* skse) {
     SetupLog();
 
@@ -38,6 +44,11 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse) {
     SKSE::AllocTrampoline(64);
 
     StackingPlugin::Hooks::Install();
+
+    auto* messaging = SKSE::GetMessagingInterface();
+    if (messaging) {
+        messaging->RegisterListener(OnMessage);
+    }
 
     SKSE::log::info("{} loaded", plugin->GetName());
     return true;

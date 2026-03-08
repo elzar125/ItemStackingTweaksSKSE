@@ -40,16 +40,28 @@ namespace StackingPlugin {
     bool IsNotEqual_Hook(RE::ExtraDataList* a_lhs, RE::ExtraDataList* a_rhs, char a_param3) {
         auto& cfg = Config::Get();
 
-        if (cfg.unstackStolen && IsStolenExtraDataList(a_lhs) && IsStolenExtraDataList(a_rhs))
-            return false;
+        bool lhsDistinct = a_lhs && (a_lhs->HasType(RE::ExtraDataType::kTextDisplayData) ||
+                                      a_lhs->HasType(RE::ExtraDataType::kEnchantment));
+        bool rhsDistinct = a_rhs && (a_rhs->HasType(RE::ExtraDataType::kTextDisplayData) ||
+                                      a_rhs->HasType(RE::ExtraDataType::kEnchantment));
+        if (lhsDistinct || rhsDistinct)
+            return g_origIsNotEqual(a_lhs, a_rhs, a_param3);
 
-        if (cfg.unstackQuest && IsQuestExtraDataList(a_lhs) && IsQuestExtraDataList(a_rhs))
-            return false;
+        if (cfg.unstackStolen && (IsStolenExtraDataList(a_lhs) != IsStolenExtraDataList(a_rhs)))
+            return true;
+        if (cfg.unstackQuest && (IsQuestExtraDataList(a_lhs) != IsQuestExtraDataList(a_rhs)))
+            return true;
+        if (cfg.unstackFavorites && (IsFavoritedExtraDataList(a_lhs) != IsFavoritedExtraDataList(a_rhs)))
+            return true;
+        if (cfg.unstackEquipped && (IsEquippedExtraDataList(a_lhs) != IsEquippedExtraDataList(a_rhs)))
+            return true;
 
-        if (cfg.unstackFavorites && IsFavoritedExtraDataList(a_lhs) && IsFavoritedExtraDataList(a_rhs))
-            return false;
+        bool anyMatch = (cfg.unstackStolen && IsStolenExtraDataList(a_lhs))
+                     || (cfg.unstackQuest && IsQuestExtraDataList(a_lhs))
+                     || (cfg.unstackFavorites && IsFavoritedExtraDataList(a_lhs))
+                     || (cfg.unstackEquipped && IsEquippedExtraDataList(a_lhs));
 
-        if (cfg.unstackEquipped && IsEquippedExtraDataList(a_lhs) && IsEquippedExtraDataList(a_rhs))
+        if (anyMatch)
             return false;
 
         return g_origIsNotEqual(a_lhs, a_rhs, a_param3);
@@ -125,6 +137,83 @@ namespace StackingPlugin {
             return;
 
         SKSE::log::info("Hooks installed");
+    }
+
+    void Hooks::MergeInventoryLists() {
+        auto* player = RE::PlayerCharacter::GetSingleton();
+        if (!player) return;
+
+        auto* changes = player->GetInventoryChanges();
+        if (!changes || !changes->entryList) return;
+
+        if (!g_origIsNotEqual) {
+            SKSE::log::warn("MergeInventoryLists: original IsNotEqual not available, skipping");
+            return;
+        }
+
+        auto& cfg = Config::Get();
+        int totalMerged = 0;
+
+        for (auto& entry : *changes->entryList) {
+            if (!entry || !entry->extraLists) continue;
+
+            std::vector<RE::ExtraDataList*> lists;
+            for (auto& xList : *entry->extraLists) {
+                if (xList) lists.push_back(xList);
+            }
+
+            if (lists.size() < 2) continue;
+
+            std::vector<bool> removed(lists.size(), false);
+            int mergedThisEntry = 0;
+
+            for (std::size_t i = 0; i < lists.size(); i++) {
+                if (removed[i]) continue;
+                for (std::size_t j = i + 1; j < lists.size(); j++) {
+                    if (removed[j]) continue;
+                    if (lists[i]->HasType(RE::ExtraDataType::kTextDisplayData) ||
+                        lists[j]->HasType(RE::ExtraDataType::kTextDisplayData) ||
+                        lists[i]->HasType(RE::ExtraDataType::kEnchantment) ||
+                        lists[j]->HasType(RE::ExtraDataType::kEnchantment))
+                        continue;
+                    bool eitherHotkeyed = lists[i]->HasType(RE::ExtraDataType::kHotkey) !=
+                                          lists[j]->HasType(RE::ExtraDataType::kHotkey);
+                    if (eitherHotkeyed) continue;
+                    if (!g_origIsNotEqual(lists[i], lists[j], 1) &&
+                        !g_origIsNotEqual(lists[j], lists[i], 1)) {
+                        auto countI = lists[i]->GetCount();
+                        auto countJ = lists[j]->GetCount();
+                        lists[i]->SetCount(static_cast<std::uint16_t>(countI + countJ));
+                        removed[j] = true;
+                        mergedThisEntry++;
+                    }
+                }
+            }
+
+            if (mergedThisEntry == 0) continue;
+
+            std::vector<RE::ExtraDataList*> surviving;
+            for (std::size_t i = 0; i < lists.size(); i++) {
+                if (!removed[i]) surviving.push_back(lists[i]);
+            }
+
+            entry->extraLists->clear();
+            for (auto it = surviving.rbegin(); it != surviving.rend(); ++it) {
+                entry->extraLists->push_front(*it);
+            }
+
+            totalMerged += mergedThisEntry;
+
+            if (cfg.debugLogging) {
+                const char* name = entry->object ? entry->object->GetName() : "???";
+                SKSE::log::info("Merged {} ExtraDataLists for {} ({} remaining)",
+                    mergedThisEntry, name, surviving.size());
+            }
+        }
+
+        if (totalMerged > 0) {
+            SKSE::log::info("Post-load merge: consolidated {} ExtraDataLists", totalMerged);
+        }
     }
 
 }
