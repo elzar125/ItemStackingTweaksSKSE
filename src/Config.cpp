@@ -10,8 +10,7 @@ namespace StackingPlugin {
     }
 
     void Config::Load() {
-        const auto dataPath = std::filesystem::current_path() / "Data";
-        const auto iniPath = dataPath / "SKSE" / "Plugins" / "StackingPlugin.ini";
+        const auto iniPath = std::filesystem::path("Data") / "SKSE" / "Plugins" / "ItemStackingTweaks.ini";
 
         if (!std::filesystem::exists(iniPath)) {
             return;
@@ -26,6 +25,7 @@ namespace StackingPlugin {
 
         debugLogging = ini.GetBoolValue("General", "bDebugLogging", false);
         unstackStolen = ini.GetBoolValue("Unstacking", "bUnstackStolen", true);
+        unstackStolenIncludeIngredients = ini.GetBoolValue("Unstacking", "bUnstackStolenIncludeIngredients", false);
         unstackQuest = ini.GetBoolValue("Unstacking", "bUnstackQuest", true);
         unstackFavorites = ini.GetBoolValue("Unstacking", "bUnstackFavorites", true);
         unstackEquipped = ini.GetBoolValue("Unstacking", "bUnstackEquipped", true);

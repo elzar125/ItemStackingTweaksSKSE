@@ -8,8 +8,8 @@ using namespace std::literals;
 
 SKSEPluginInfo(
     .Version = { 1, 0, 0, 0 },
-    .Name = "StackingPlugin"sv,
-    .Author = "Author"sv,
+    .Name = "ItemStackingTweaks"sv,
+    .Author = "Elzar125"sv,
     .SupportEmail = ""sv,
     .StructCompatibility = SKSE::StructCompatibility::Independent,
     .RuntimeCompatibility = SKSE::VersionIndependence::AddressLibrary

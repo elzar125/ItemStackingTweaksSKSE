@@ -8,6 +8,7 @@ namespace StackingPlugin {
     struct Config {
         bool debugLogging = false;
         bool unstackStolen = true;
+        bool unstackStolenIncludeIngredients = false;
         bool unstackQuest = true;
         bool unstackFavorites = true;
         bool unstackEquipped = true;

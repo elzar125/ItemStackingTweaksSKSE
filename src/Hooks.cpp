@@ -15,6 +15,30 @@ namespace StackingPlugin {
     IsNotEqual_t g_origIsNotEqual = nullptr;
     AddExtraList_t g_origAddExtraList = nullptr;
 
+    thread_local RE::TESBoundObject* g_addExtraListObject = nullptr;
+
+    RE::TESBoundObject* FindOwnerObject(RE::ExtraDataList* a_target) {
+        auto* player = RE::PlayerCharacter::GetSingleton();
+        if (!player) return nullptr;
+        auto* changes = player->GetInventoryChanges();
+        if (!changes || !changes->entryList) return nullptr;
+        for (auto& entry : *changes->entryList) {
+            if (!entry || !entry->extraLists) continue;
+            for (auto& xList : *entry->extraLists) {
+                if (xList == a_target) return entry->object;
+            }
+        }
+        return nullptr;
+    }
+
+    bool ShouldSkipStolenUnstack(RE::TESBoundObject* a_obj) {
+        if (!a_obj) return false;
+        auto& cfg = Config::Get();
+        if (!cfg.unstackStolenIncludeIngredients && a_obj->GetFormType() == RE::FormType::Ingredient)
+            return true;
+        return false;
+    }
+
     bool HasOnlyIgnorableExtraData_Hook(RE::ExtraDataList* a_list, char a_checkOwnership) {
         bool result = g_origHasOnlyIgnorable(a_list, a_checkOwnership);
         if (!result)
@@ -22,8 +46,11 @@ namespace StackingPlugin {
 
         auto& cfg = Config::Get();
 
-        if (cfg.unstackStolen && a_checkOwnership && IsStolenExtraDataList(a_list))
+        if (cfg.unstackStolen && a_checkOwnership && IsStolenExtraDataList(a_list)) {
+            if (ShouldSkipStolenUnstack(FindOwnerObject(a_list)))
+                return true;
             return false;
+        }
 
         if (cfg.unstackQuest && IsQuestExtraDataList(a_list))
             return false;
@@ -47,7 +74,9 @@ namespace StackingPlugin {
         if (lhsDistinct || rhsDistinct)
             return g_origIsNotEqual(a_lhs, a_rhs, a_param3);
 
-        if (cfg.unstackStolen && (IsStolenExtraDataList(a_lhs) != IsStolenExtraDataList(a_rhs)))
+        bool skipStolen = ShouldSkipStolenUnstack(g_addExtraListObject);
+
+        if (cfg.unstackStolen && !skipStolen && (IsStolenExtraDataList(a_lhs) != IsStolenExtraDataList(a_rhs)))
             return true;
         if (cfg.unstackQuest && (IsQuestExtraDataList(a_lhs) != IsQuestExtraDataList(a_rhs)))
             return true;
@@ -56,7 +85,7 @@ namespace StackingPlugin {
         if (cfg.unstackEquipped && (IsEquippedExtraDataList(a_lhs) != IsEquippedExtraDataList(a_rhs)))
             return true;
 
-        bool anyMatch = (cfg.unstackStolen && IsStolenExtraDataList(a_lhs))
+        bool anyMatch = (cfg.unstackStolen && !skipStolen && IsStolenExtraDataList(a_lhs))
                      || (cfg.unstackQuest && IsQuestExtraDataList(a_lhs))
                      || (cfg.unstackFavorites && IsFavoritedExtraDataList(a_lhs))
                      || (cfg.unstackEquipped && IsEquippedExtraDataList(a_lhs));
@@ -68,10 +97,12 @@ namespace StackingPlugin {
     }
 
     void AddExtraList_Hook(RE::InventoryEntryData* a_this, RE::ExtraDataList* a_extra, char a_merge) {
+        g_addExtraListObject = a_this ? a_this->object : nullptr;
         if (!a_merge && a_extra) {
             auto& cfg = Config::Get();
+            bool skipStolen = ShouldSkipStolenUnstack(g_addExtraListObject);
 
-            bool force = (cfg.unstackStolen && IsStolenExtraDataList(a_extra))
+            bool force = (cfg.unstackStolen && !skipStolen && IsStolenExtraDataList(a_extra))
                       || (cfg.unstackQuest && IsQuestExtraDataList(a_extra))
                       || (cfg.unstackFavorites && IsFavoritedExtraDataList(a_extra))
                       || (cfg.unstackEquipped && IsEquippedExtraDataList(a_extra));
@@ -80,6 +111,7 @@ namespace StackingPlugin {
                 a_merge = 1;
         }
         g_origAddExtraList(a_this, a_extra, a_merge);
+        g_addExtraListObject = nullptr;
     }
 
     void Hooks::Install() {
@@ -89,8 +121,9 @@ namespace StackingPlugin {
         if (cfg.debugLogging)
             SKSE::log::info("Debug logging enabled");
 
-        SKSE::log::info("Unstacking config: stolen={}, quest={}, favorites={}, equipped={}",
-            cfg.unstackStolen, cfg.unstackQuest, cfg.unstackFavorites, cfg.unstackEquipped);
+        SKSE::log::info("Unstacking config: stolen={} (includeIngredients={}), quest={}, favorites={}, equipped={}",
+            cfg.unstackStolen, cfg.unstackStolenIncludeIngredients,
+            cfg.unstackQuest, cfg.unstackFavorites, cfg.unstackEquipped);
 
         if (!cfg.unstackStolen && !cfg.unstackQuest && !cfg.unstackFavorites && !cfg.unstackEquipped) {
             SKSE::log::info("All unstacking disabled, skipping hooks");
