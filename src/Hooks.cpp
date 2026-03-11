@@ -9,13 +9,8 @@ namespace StackingPlugin {
 
     using HasOnlyIgnorableExtraData_t = bool(*)(RE::ExtraDataList*, char);
     using IsNotEqual_t = bool(*)(RE::ExtraDataList*, RE::ExtraDataList*, char);
-    using AddExtraList_t = void(*)(RE::InventoryEntryData*, RE::ExtraDataList*, char);
-
     HasOnlyIgnorableExtraData_t g_origHasOnlyIgnorable = nullptr;
     IsNotEqual_t g_origIsNotEqual = nullptr;
-    AddExtraList_t g_origAddExtraList = nullptr;
-
-    thread_local RE::TESBoundObject* g_addExtraListObject = nullptr;
 
     RE::TESBoundObject* FindOwnerObject(RE::ExtraDataList* a_target) {
         auto* player = RE::PlayerCharacter::GetSingleton();
@@ -74,9 +69,7 @@ namespace StackingPlugin {
         if (lhsDistinct || rhsDistinct)
             return g_origIsNotEqual(a_lhs, a_rhs, a_param3);
 
-        bool skipStolen = ShouldSkipStolenUnstack(g_addExtraListObject);
-
-        if (cfg.unstackStolen && !skipStolen && (IsStolenExtraDataList(a_lhs) != IsStolenExtraDataList(a_rhs)))
+        if (cfg.unstackStolen && (IsStolenExtraDataList(a_lhs) != IsStolenExtraDataList(a_rhs)))
             return true;
         if (cfg.unstackQuest && (IsQuestExtraDataList(a_lhs) != IsQuestExtraDataList(a_rhs)))
             return true;
@@ -85,33 +78,7 @@ namespace StackingPlugin {
         if (cfg.unstackEquipped && (IsEquippedExtraDataList(a_lhs) != IsEquippedExtraDataList(a_rhs)))
             return true;
 
-        bool anyMatch = (cfg.unstackStolen && !skipStolen && IsStolenExtraDataList(a_lhs))
-                     || (cfg.unstackQuest && IsQuestExtraDataList(a_lhs))
-                     || (cfg.unstackFavorites && IsFavoritedExtraDataList(a_lhs))
-                     || (cfg.unstackEquipped && IsEquippedExtraDataList(a_lhs));
-
-        if (anyMatch)
-            return false;
-
         return g_origIsNotEqual(a_lhs, a_rhs, a_param3);
-    }
-
-    void AddExtraList_Hook(RE::InventoryEntryData* a_this, RE::ExtraDataList* a_extra, char a_merge) {
-        g_addExtraListObject = a_this ? a_this->object : nullptr;
-        if (!a_merge && a_extra) {
-            auto& cfg = Config::Get();
-            bool skipStolen = ShouldSkipStolenUnstack(g_addExtraListObject);
-
-            bool force = (cfg.unstackStolen && !skipStolen && IsStolenExtraDataList(a_extra))
-                      || (cfg.unstackQuest && IsQuestExtraDataList(a_extra))
-                      || (cfg.unstackFavorites && IsFavoritedExtraDataList(a_extra))
-                      || (cfg.unstackEquipped && IsEquippedExtraDataList(a_extra));
-
-            if (force)
-                a_merge = 1;
-        }
-        g_origAddExtraList(a_this, a_extra, a_merge);
-        g_addExtraListObject = nullptr;
     }
 
     void Hooks::Install() {
@@ -161,12 +128,6 @@ namespace StackingPlugin {
                 reinterpret_cast<void*>(&IsNotEqual_Hook),
                 reinterpret_cast<void**>(&g_origIsNotEqual),
                 "IsNotEqual"))
-            return;
-
-        if (!installHook(resolveAddr(15748, 15986, 0x1E6AB0),
-                reinterpret_cast<void*>(&AddExtraList_Hook),
-                reinterpret_cast<void**>(&g_origAddExtraList),
-                "AddExtraList"))
             return;
 
         SKSE::log::info("Hooks installed");
